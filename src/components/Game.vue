@@ -12,7 +12,7 @@
       >
         Start Game
       </el-button>
-  
+ 
       <el-button
         size="large"
         type="plain"
@@ -22,12 +22,25 @@
       >
         Restart the Game
       </el-button>
+      <p>
+        <el-button
+        size="large"
+        type="plain"
+        @click="closeMultiplayerAndStartGame"
+        v-if="gameOver"
+      >
+        Go offline
+      </el-button>
+      </p>
+
 
     <p>
         <el-button
           type="primary"
           v-if="isLoggedIn && !isMultiplayerStarted"
           @click="multiplayer"
+          style="background-color: rgb(161, 14, 219);"
+
         >
          Multiplayer
         </el-button>
@@ -36,18 +49,26 @@
           type="primary"
           v-if="isLoggedIn && isMultiplayerStarted && joinButton"
           @click="startGameMultiplayer"
+          style="background-color: rgb(161, 14, 219);"
+
         >
          Join
         </el-button>
         
-        <h1 v-if="showMultiPlayerNames"> 
-            <span id="player1">{{ currentAccount.name }}({{ currentAccount.value }})</span> 
-                                  vs
-            <span id="player2">{{ multiplayerOpponent.name }}({{ multiplayerOpponent.value }})</span>
-        </h1>
-      </p>
-      <p>
-        {{ !isMultiplayerStarted ? 'multiplayer is not started' : 'multiplayer is started' }}
+        <div v-if="showMultiPlayerNames">
+          <table>
+            <tr>
+              <td id="player1"><h1>{{ currentAccount.name }}({{ currentAccount.value }})</h1></td>
+              <td><h1> -vs- </h1></td>
+              <td id="player2"><h1>{{ multiplayerOpponent.name }} ({{ multiplayerOpponent.value }})</h1></td>
+            </tr>
+            <tr>
+              <h1><td id="player1">{{currentAccount.score}}</td></h1>
+              <td></td>
+              <h1><td id="player2">{{multiplayerOpponent.score}}</td></h1>
+            </tr>
+          </table>
+        </div>
       </p>
     <div v-if="showBoard" class="board-container">
 
@@ -105,10 +126,25 @@
       });
     },
     mounted() {
+      this.socket.on('closeMultiplayerGame',  () => {
+        console.log('received closemultiplayergame')
+        this.showBoard = false;
+        this.winningMessage = '';
+        this.gameOver = false;
+        this.startGameButton = true;
+        this.joinButton = true;
+        this.showMultiPlayerNames = false;
+        this.isMultiplayerStarted = false;
+        this.isActivePlayer = false;
+        this.currentAccount = {};
+        this.multiplayerOpponent = {};
+        this.board = new Array(9).fill('');
+        this.currentPlayer = 'X';
+      }),
       this.socket.on('incomingMessage', (data) => {
-        console.log(`Received message from another user:${data.user} with value ${data.value}`);
-        this.multiplayerOpponent = {name: data.user, value: data.value};
-        this.currentAccount = { name: this.$store.getters.loggedInUser.name, value: 'O' }
+        console.log(`Received message from another user:${data.user} with value ${data.value} with score ${data.score}`);
+        this.multiplayerOpponent = {name: data.user, value: data.value, score: data.score};
+        this.currentAccount = { name: this.$store.getters.loggedInUser.name, value: 'O', score: 0 }
         this.isMultiplayerStarted = true;
         console.log(`Received message from another user:${data.user} with value ${data.value}`);
       }),
@@ -130,14 +166,30 @@
         });
     },
     methods:  {
+      closeMultiplayerAndStartGame () {
+        console.log('sent closemultiplayergame')
+
+        this.showBoard = false;
+        this.winningMessage = '';
+        this.gameOver = false;
+        this.startGameButton = true;
+        this.joinButton = true;
+        this.showMultiPlayerNames = false;
+        this.isMultiplayerStarted = false;
+        this.isActivePlayer = false;
+        this.currentAccount = {};
+        this.multiplayerOpponent = {};
+        this.board = new Array(9).fill('');
+        this.currentPlayer = 'X';
+        this.socket.emit('closeMultiplayerGame');
+      },
       multiplayer() {
         const currentUser = this.$store.getters.loggedInUser.name;
         const currentSymbol = 'X';
         const opponentSymbol = 'O';
-        this.socket.emit('multiplayer', {user:  currentUser, value: currentSymbol, room: this.socket.id});
-
-        this.currentAccount = { name: currentUser, value: currentSymbol };
-        this.multiplayerOpponent = { name: '', value: opponentSymbol };
+        this.socket.emit('multiplayer', {user:  currentUser, value: currentSymbol, score: 0, room: this.socket.id});
+        this.currentAccount = { name: currentUser, value: currentSymbol, score: 0};
+        this.multiplayerOpponent = { name: '', value: opponentSymbol, score: 0};
         this.isActivePlayer = true
         console.log(this.isActivePlayer)
       },
@@ -154,7 +206,6 @@
         isMultiplayerStarted: this.isMultiplayerStarted,
         multiplayerOpponent: this.currentAccount,
         isActivePlayer:  true
-
       });
     },
       startGame() {
@@ -201,9 +252,18 @@
               const currentPlayerName = this.currentAccount.name;
 
               this.board[cellIndex] = currentPlayer;
-              if (this.checkWinner(currentPlayer)) {
+              if(this.board.every(el => el !== '')) {
+                this.gameOver = true;
+                this.winningMessage = `Draw!`;
+              }
+              if (this.checkWinner(currentPlayer)) { 
                   this.gameOver = true;
                   this.winningMessage = `Player ${currentPlayerName} wins!`;
+                  if (currentPlayer === this.currentAccount.value) {
+                    this.currentAccount.score++;
+                  } else {
+                    this.multiplayerOpponent.score++;
+                  }
                   
               } else {
                 this.isActivePlayer = !this.isActivePlayer
@@ -213,6 +273,10 @@
           }
           if (!this.gameOver && this.board[cellIndex] === '') {
                 this.board[cellIndex] = this.currentPlayer;
+                if(this.board.every(el => el !== '')) {
+                this.gameOver = true;
+                this.winningMessage = `Draw!`;
+              }
                 if (this.checkWinner(this.currentPlayer)) {
                   this.gameOver = true;
 

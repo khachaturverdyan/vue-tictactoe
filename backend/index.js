@@ -50,4 +50,8 @@ io.on('connection', (socket) => {
     console.log('Received game state:', data);
     socket.broadcast.emit('incomingGameState', data);
   })
+
+  socket.on('closeMultiplayerGame', () => {
+    socket.broadcast.emit('closeMultiplayerGame');
+  });
 });
